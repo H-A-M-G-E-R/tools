@@ -133,6 +133,7 @@ for frame_num in unique_frames:
                 used_obj_tiles.append(sprite['tile'])
 used_obj_tiles.append(0x8A) # energy drop
 used_obj_tiles.extend(hud_tiles)
+used_obj_tiles.extend([0xFF]*6) # filler
 for frame_num in item_frames:
     for sprite in metasprites[frame_num]:
         if sprite['tile'] not in used_obj_tiles:
