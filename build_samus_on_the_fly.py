@@ -1,5 +1,5 @@
 import romfile, palette, load_gfx
-from metasprites_2_png import convert_tile_from_bitplanes, convert_metasprite
+from metasprite import convert_metasprite, print_metasprite
 from twobpp import gfx_2_image
 import numpy as np
 from PIL import Image
@@ -9,6 +9,10 @@ def relocate_chr_tiles(gfx, idxs):
     for i in idxs:
         new_gfx.extend(gfx[i*16+0x1000:i*16+0x1010])
     return new_gfx
+
+def relocate_metasprite_tiles(metasprite, idxs, offset=0):
+    for sprite in metasprite:
+        sprite['tile'] = idxs.index(sprite['tile']) + offset
 
 def print_relocated_frame(frame_ptr, idxs, place_lbl, offset=0):
     rom.seek(frame_ptr)
@@ -104,7 +108,7 @@ hud_tiles = [
 
 item_frames = [0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59]
 
-selected_en_frames = [0x61, 0x62, 0x80, 0x81, 0x89]
+selected_en_frames = [0x02, 0x61, 0x62, 0x80, 0x81, 0x89]
 
 rom = romfile.ROMFile('M1.nes')
 
@@ -118,26 +122,28 @@ for frame_num in range(0x6A):
     ptr = 0x10000+rom.read_int(2)
     rom.seek(0x1860B+frame_num*2+2)
     if ptr != 0x10000+rom.read_int(2):
-        metasprites[frame_num] = convert_metasprite(ptr, 0x186DF)
+        metasprites[frame_num] = convert_metasprite(rom, ptr, 0x186DF)
         unique_frames.append(frame_num)
 
 # Samus facing forward fix
-metasprites[0x07][1] = {'x': 0, 'y': -16, 'tile': 10, 'palette': 0, 'bg_priority': True, 'h_flip': False, 'v_flip': False}
+metasprites[0x07][0][1] = {'x': 0, 'y': -16, 'tile': 10, 'palette': 0, 'bg_priority': True, 'h_flip': False, 'v_flip': False, 'explode_idx': None}
 
 # Objects
 used_obj_tiles = []
 for frame_num in unique_frames:
     if frame_num not in samus_frames and frame_num not in frame_ids_to_skip and frame_num not in item_frames:
-        for sprite in metasprites[frame_num]:
+        for sprite in metasprites[frame_num][0]:
             if sprite['tile'] not in used_obj_tiles:
                 used_obj_tiles.append(sprite['tile'])
+        relocate_metasprite_tiles(metasprites[frame_num][0], used_obj_tiles, max_samus_tiles)
 used_obj_tiles.append(0x8A) # energy drop
 used_obj_tiles.extend(hud_tiles)
 used_obj_tiles.extend([0xFF]*6) # filler
 for frame_num in item_frames:
-    for sprite in metasprites[frame_num]:
+    for sprite in metasprites[frame_num][0]:
         if sprite['tile'] not in used_obj_tiles:
             used_obj_tiles.append(sprite['tile'])
+    relocate_metasprite_tiles(metasprites[frame_num][0], used_obj_tiles, max_samus_tiles)
 while len(used_obj_tiles) < 0x80-max_samus_tiles:
     used_obj_tiles.append(0xFF)
 
@@ -152,9 +158,10 @@ used_samus_tiles = []
 for group_i, group in enumerate(samus_groups):
     used_tiles = []
     for frame_num in group:
-        for sprite in metasprites[frame_num]:
+        for sprite in metasprites[frame_num][0]:
             if sprite['tile'] not in used_tiles:
                 used_tiles.append(sprite['tile'])
+        relocate_metasprite_tiles(metasprites[frame_num][0], used_tiles)
     while len(used_tiles) < max_samus_tiles:
         used_tiles.append(0xFF)
     used_samus_tiles.append(used_tiles)
@@ -177,22 +184,22 @@ for group_i, used_tiles in enumerate(used_samus_tiles):
 
 for group_i, group in enumerate(samus_groups):
     for frame_num in group:
-        rom.seek(0x1860B+frame_num*2)
         print(f'ObjFrame{frame_num:02X}:')
-        print_relocated_frame(0x10000+rom.read_int(2), used_samus_tiles[group_i], 'ObjPlace')
+        print_metasprite(metasprites[frame_num][0], metasprites[frame_num][1], metasprites[frame_num][2])
         print()
 
 for frame_num in unique_frames:
     if frame_num not in samus_frames and frame_num not in frame_ids_to_skip:
-        rom.seek(0x1860B+frame_num*2)
         print(f'ObjFrame{frame_num:02X}:')
-        print_relocated_frame(0x10000+rom.read_int(2), used_obj_tiles, 'ObjPlace', max_samus_tiles)
+        print_metasprite(metasprites[frame_num][0], metasprites[frame_num][1], metasprites[frame_num][2])
         print()
 
 for frame_num in selected_en_frames:
-    rom.seek(0x19de0+frame_num*2)
+    rom.seek(0x19DE0+frame_num*2)
+    metasprite, y_radius, x_radius = convert_metasprite(rom, 0x10000+rom.read_int(2), 0x19F0E)
+    relocate_metasprite_tiles(metasprite, used_obj_tiles, max_samus_tiles)
     print(f'EnFrame{frame_num:02X}:')
-    print_relocated_frame(0x10000+rom.read_int(2), used_obj_tiles, 'EnPlace', max_samus_tiles)
+    print_metasprite(metasprite, y_radius, x_radius)
     print()
 
 for tile_num in [0x5E, 0x5F] + hud_tiles:

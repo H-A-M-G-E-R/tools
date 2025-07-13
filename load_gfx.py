@@ -72,7 +72,7 @@ if __name__ == '__main__':
         bg_chr.write(bytes(gfx[:0x1000]))
 
         spr_image = gfx_2_image(gfx[0x1000:])
-        spr_image.putpalette(pal[0x10*4:0x14*4], 'RGBA')
+        spr_image.putpalette(pal[0x18*4:0x1C*4], 'RGBA')
         spr_image.save(f'out/{area_name}_spr.png')
         spr_chr = open(f'out/{area_name}_spr.chr', 'wb')
         spr_chr.write(bytes(gfx[0x1000:]))
