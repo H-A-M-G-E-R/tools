@@ -3,6 +3,7 @@ from metasprite import convert_metasprite, print_metasprite
 from twobpp import gfx_2_image
 import numpy as np
 from PIL import Image
+import copy
 
 def relocate_chr_tiles(gfx, idxs):
     new_gfx = []
@@ -71,27 +72,6 @@ samus_groups = [
 ]
 '''
 
-'''
-samus_groups = [
-    [0x03,0x04,0x05, 0x0C,0x0D,0x0E, 0x10, 0x12],
-    [0x07, 0x17,0x18,0x19,0x1A, 0x1B,0x1C,0x1D,0x1E, 0x35],
-    [0x08, 0x22, 0x2B, 0x30, 0x38, 0x39, 0x40,0x41,0x42, 0x46,0x47,0x48],
-]
-'''
-
-samus_groups = [
-    [0x03, 0x0C, 0x40, 0x46],
-    [0x04, 0x0D],
-    [0x05, 0x0E],
-    [0x41, 0x42, 0x47, 0x48],
-    [0x07, 0x35],
-    [0x08, 0x22, 0x2B, 0x30],
-    [0x10, 0x12, 0x38, 0x39],
-    [0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E]
-]
-
-max_samus_tiles = 0x10
-
 frame_ids_to_skip = [
     0x5A, # skree projectile
     0x5B, 0x5C, 0x5D, 0x5E, # unused
@@ -112,9 +92,7 @@ selected_en_frames = [0x02, 0x61, 0x62, 0x80, 0x81, 0x89]
 
 rom = romfile.ROMFile('M1.nes')
 
-pal = palette.convert_palette([0x0F, 0x16, 0x19, 0x27], 'palette.pal')
-gfx = load_gfx.load_gfx(rom, [0x00, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
-
+# Prepare metasprites
 metasprites = {}
 unique_frames = []
 for frame_num in range(0x6A):
@@ -128,79 +106,117 @@ for frame_num in range(0x6A):
 # Samus facing forward fix
 metasprites[0x07][0][1] = {'x': 0, 'y': -16, 'tile': 10, 'palette': 0, 'bg_priority': True, 'h_flip': False, 'v_flip': False, 'explode_idx': None}
 
-# Objects
-used_obj_tiles = []
-for frame_num in unique_frames:
-    if frame_num not in samus_frames and frame_num not in frame_ids_to_skip and frame_num not in item_frames:
+relocated_metasprites = {
+    16: copy.deepcopy(metasprites),
+    32: copy.deepcopy(metasprites)
+}
+
+suit_pal = palette.convert_palette([0x0F, 0x16, 0x19, 0x27], 'palette.pal')
+suit_gfx = load_gfx.load_gfx(rom, [0x00, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
+
+suitless_pal = palette.convert_palette([0x0F, 0x15, 0x34, 0x17], 'palette.pal')
+suitless_gfx = load_gfx.load_gfx(rom, [0x00, 0x1B, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
+
+for max_samus_tiles in 16, 32:
+    if max_samus_tiles == 32:
+        samus_groups = [
+            [0x03,0x04,0x05, 0x0C,0x0D,0x0E, 0x10, 0x12],
+            [0x07, 0x17,0x18,0x19,0x1A, 0x1B,0x1C,0x1D,0x1E, 0x35],
+            [0x08, 0x22, 0x2B, 0x30, 0x38, 0x39, 0x40,0x41,0x42, 0x46,0x47,0x48],
+        ]
+    else:
+        samus_groups = [
+            [0x03, 0x0C, 0x40, 0x46],
+            [0x04, 0x0D],
+            [0x05, 0x0E],
+            [0x41, 0x42, 0x47, 0x48],
+            [0x07, 0x35],
+            [0x08, 0x22, 0x2B, 0x30],
+            [0x10, 0x12, 0x38, 0x39],
+            [0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E]
+        ]
+
+    pal = palette.convert_palette([0x0F, 0x16, 0x19, 0x27], 'palette.pal')
+    gfx = load_gfx.load_gfx(rom, [0x00, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
+
+    # Objects
+    used_obj_tiles = []
+    for frame_num in unique_frames:
+        if frame_num not in samus_frames and frame_num not in frame_ids_to_skip and frame_num not in item_frames:
+            for sprite in metasprites[frame_num][0]:
+                if sprite['tile'] not in used_obj_tiles:
+                    used_obj_tiles.append(sprite['tile'])
+            relocate_metasprite_tiles(relocated_metasprites[max_samus_tiles][frame_num][0], used_obj_tiles, max_samus_tiles)
+    used_obj_tiles.append(0x8A) # energy drop
+    used_obj_tiles.extend(hud_tiles)
+    used_obj_tiles.extend([0xFF]*6) # filler
+    for frame_num in item_frames:
         for sprite in metasprites[frame_num][0]:
             if sprite['tile'] not in used_obj_tiles:
                 used_obj_tiles.append(sprite['tile'])
-        relocate_metasprite_tiles(metasprites[frame_num][0], used_obj_tiles, max_samus_tiles)
-used_obj_tiles.append(0x8A) # energy drop
-used_obj_tiles.extend(hud_tiles)
-used_obj_tiles.extend([0xFF]*6) # filler
-for frame_num in item_frames:
-    for sprite in metasprites[frame_num][0]:
-        if sprite['tile'] not in used_obj_tiles:
-            used_obj_tiles.append(sprite['tile'])
-    relocate_metasprite_tiles(metasprites[frame_num][0], used_obj_tiles, max_samus_tiles)
-while len(used_obj_tiles) < 0x80-max_samus_tiles:
-    used_obj_tiles.append(0xFF)
+        relocate_metasprite_tiles(relocated_metasprites[max_samus_tiles][frame_num][0], used_obj_tiles, max_samus_tiles)
+    while len(used_obj_tiles) < 0x80-max_samus_tiles:
+        used_obj_tiles.append(0xFF)
 
-image = gfx_2_image(gfx, used_obj_tiles[0x40-max_samus_tiles:], 0x1000)
-image.putpalette(pal, 'RGBA')
-image.save('out/items.png')
-chrfile = open('out/items.chr', 'wb')
-chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0x40-max_samus_tiles:])))
-
-# Samus
-used_samus_tiles = []
-for group_i, group in enumerate(samus_groups):
-    used_tiles = []
-    for frame_num in group:
-        for sprite in metasprites[frame_num][0]:
-            if sprite['tile'] not in used_tiles:
-                used_tiles.append(sprite['tile'])
-        relocate_metasprite_tiles(metasprites[frame_num][0], used_tiles)
-    while len(used_tiles) < max_samus_tiles:
-        used_tiles.append(0xFF)
-    used_samus_tiles.append(used_tiles)
-
-for group_i, used_tiles in enumerate(used_samus_tiles):
-    image = gfx_2_image(gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles], 0x1000)
+    image = gfx_2_image(gfx, used_obj_tiles[0x40-max_samus_tiles:], 0x1000)
     image.putpalette(pal, 'RGBA')
-    image.save(f'out/samus_suit_{group_i}.png')
-    chrfile = open(f'out/samus_suit_{group_i}.chr', 'wb')
-    chrfile.write(bytes(relocate_chr_tiles(gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles])))
+    image.save(f'out/items_{max_samus_tiles}.png')
+    chrfile = open(f'out/items_{max_samus_tiles}.chr', 'wb')
+    chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0x40-max_samus_tiles:])))
 
-pal = palette.convert_palette([0x0F, 0x15, 0x34, 0x17], 'palette.pal')
-gfx = load_gfx.load_gfx(rom, [0x00, 0x1B, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
-for group_i, used_tiles in enumerate(used_samus_tiles):
-    image = gfx_2_image(gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles], 0x1000)
-    image.putpalette(pal, 'RGBA')
-    image.save(f'out/samus_suitless_{group_i}.png')
-    chrfile = open(f'out/samus_suitless_{group_i}.chr', 'wb')
-    chrfile.write(bytes(relocate_chr_tiles(gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles])))
+    # Samus
+    used_samus_tiles = []
+    for group_i, group in enumerate(samus_groups):
+        used_tiles = []
+        for frame_num in group:
+            for sprite in metasprites[frame_num][0]:
+                if sprite['tile'] not in used_tiles:
+                    used_tiles.append(sprite['tile'])
+            relocate_metasprite_tiles(relocated_metasprites[max_samus_tiles][frame_num][0], used_tiles)
+        while len(used_tiles) < max_samus_tiles:
+            used_tiles.append(0xFF)
+        used_samus_tiles.append(used_tiles)
 
-for group_i, group in enumerate(samus_groups):
-    for frame_num in group:
-        print(f'ObjFrame{frame_num:02X}:')
-        print_metasprite(metasprites[frame_num][0], metasprites[frame_num][1], metasprites[frame_num][2])
-        print()
+    for group_i, used_tiles in enumerate(used_samus_tiles):
+        image = gfx_2_image(suit_gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles], 0x1000)
+        image.putpalette(suit_pal, 'RGBA')
+        image.save(f'out/samus_suit_{group_i}_{max_samus_tiles}.png')
+        chrfile = open(f'out/samus_suit_{group_i}_{max_samus_tiles}.chr', 'wb')
+        chrfile.write(bytes(relocate_chr_tiles(suit_gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles])))
+
+    for group_i, used_tiles in enumerate(used_samus_tiles):
+        image = gfx_2_image(suitless_gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles], 0x1000)
+        image.putpalette(suitless_pal, 'RGBA')
+        image.save(f'out/samus_suitless_{group_i}_{max_samus_tiles}.png')
+        chrfile = open(f'out/samus_suitless_{group_i}_{max_samus_tiles}.chr', 'wb')
+        chrfile.write(bytes(relocate_chr_tiles(suitless_gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles])))
+
+for frame_num in samus_frames:
+    print(f'ObjFrame{frame_num:02X}:')
+    print('.if CFG_NUM_SAMUS_TILES == 16')
+    print_metasprite(relocated_metasprites[16][frame_num][0], relocated_metasprites[16][frame_num][1], relocated_metasprites[16][frame_num][2])
+    print('.elif CFG_NUM_SAMUS_TILES == 32')
+    print_metasprite(relocated_metasprites[32][frame_num][0], relocated_metasprites[32][frame_num][1], relocated_metasprites[32][frame_num][2])
+    print('.endif')
+    print()
 
 for frame_num in unique_frames:
     if frame_num not in samus_frames and frame_num not in frame_ids_to_skip:
         print(f'ObjFrame{frame_num:02X}:')
-        print_metasprite(metasprites[frame_num][0], metasprites[frame_num][1], metasprites[frame_num][2])
+        print('.if CFG_NUM_SAMUS_TILES == 16')
+        print_metasprite(relocated_metasprites[16][frame_num][0], relocated_metasprites[16][frame_num][1], relocated_metasprites[16][frame_num][2])
+        print('.elif CFG_NUM_SAMUS_TILES == 32')
+        print_metasprite(relocated_metasprites[32][frame_num][0], relocated_metasprites[32][frame_num][1], relocated_metasprites[32][frame_num][2])
+        print('.endif')
         print()
 
-for frame_num in selected_en_frames:
+'''for frame_num in selected_en_frames:
     rom.seek(0x19DE0+frame_num*2)
     metasprite, y_radius, x_radius = convert_metasprite(rom, 0x10000+rom.read_int(2), 0x19F0E)
-    relocate_metasprite_tiles(metasprite, used_obj_tiles, max_samus_tiles)
+    relocate_metasprite_tiles(relocated_metasprites[max_samus_tiles], used_obj_tiles, max_samus_tiles)
     print(f'EnFrame{frame_num:02X}:')
-    print_metasprite(metasprite, y_radius, x_radius)
+    print_metasprite(relocated_metasprites[max_samus_tiles], y_radius, x_radius)
     print()
 
 for tile_num in [0x5E, 0x5F] + hud_tiles:
-    print(f'${tile_num:02X} -> ${used_obj_tiles.index(tile_num)+max_samus_tiles:02X}')
+    print(f'${tile_num:02X} -> ${used_obj_tiles.index(tile_num)+max_samus_tiles:02X}')'''
