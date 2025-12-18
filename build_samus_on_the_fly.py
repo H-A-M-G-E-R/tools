@@ -108,7 +108,8 @@ metasprites[0x07][0][1] = {'x': 0, 'y': -16, 'tile': 10, 'palette': 0, 'bg_prior
 
 relocated_metasprites = {
     16: copy.deepcopy(metasprites),
-    32: copy.deepcopy(metasprites)
+    32: copy.deepcopy(metasprites),
+    64: copy.deepcopy(metasprites)
 }
 
 suit_pal = palette.convert_palette([0x0F, 0x16, 0x19, 0x27], 'palette.pal')
@@ -117,8 +118,13 @@ suit_gfx = load_gfx.load_gfx(rom, [0x00, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x0
 suitless_pal = palette.convert_palette([0x0F, 0x15, 0x34, 0x17], 'palette.pal')
 suitless_gfx = load_gfx.load_gfx(rom, [0x00, 0x1B, 0x14, 0x17, 0x18, 0x19, 0x16, 0x03, 0x04, 0x05, 0x06, 0x19, 0x16])
 
-for max_samus_tiles in 16, 32:
-    if max_samus_tiles == 32:
+for max_samus_tiles in 16, 32, 64:
+    if max_samus_tiles == 64:
+        samus_groups = [
+            [0x03,0x04,0x05, 0x0C,0x0D,0x0E, 0x10, 0x12, 0x08, 0x22, 0x2B, 0x30, 0x38, 0x39, 0x40,0x41,0x42, 0x46,0x47,0x48],
+            [0x07, 0x17,0x18,0x19,0x1A, 0x1B,0x1C,0x1D,0x1E, 0x35],
+        ]
+    elif max_samus_tiles == 32:
         samus_groups = [
             [0x03,0x04,0x05, 0x0C,0x0D,0x0E, 0x10, 0x12],
             [0x07, 0x17,0x18,0x19,0x1A, 0x1B,0x1C,0x1D,0x1E, 0x35],
@@ -158,11 +164,25 @@ for max_samus_tiles in 16, 32:
     while len(used_obj_tiles) < 0x80-max_samus_tiles:
         used_obj_tiles.append(0xFF)
 
-    image = gfx_2_image(gfx, used_obj_tiles[0x40-max_samus_tiles:], 0x1000)
-    image.putpalette(pal, 'RGBA')
-    image.save(f'out/items_{max_samus_tiles}.png')
-    chrfile = open(f'out/items_{max_samus_tiles}.chr', 'wb')
-    chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0x40-max_samus_tiles:])))
+    if max_samus_tiles == 64:
+        # split into 2 chr banks
+        image = gfx_2_image(gfx, used_obj_tiles[0:0x30] + [0xFF]*0x10, 0x1000)
+        image.putpalette(pal, 'RGBA')
+        image.save(f'out/common_spr_{max_samus_tiles}.png')
+        chrfile = open(f'out/common_spr_{max_samus_tiles}.chr', 'wb')
+        chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0:0x30] + [0xFF]*0x10)))
+
+        image = gfx_2_image(gfx, used_obj_tiles[0x30:0x50] + [0xFF]*0x20, 0x1000)
+        image.putpalette(pal, 'RGBA')
+        image.save(f'out/items_{max_samus_tiles}.png')
+        chrfile = open(f'out/items_{max_samus_tiles}.chr', 'wb')
+        chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0x30:0x50] + [0xFF]*0x20)))
+    else:
+        image = gfx_2_image(gfx, used_obj_tiles[0x40-max_samus_tiles:], 0x1000)
+        image.putpalette(pal, 'RGBA')
+        image.save(f'out/items_{max_samus_tiles}.png')
+        chrfile = open(f'out/items_{max_samus_tiles}.chr', 'wb')
+        chrfile.write(bytes(relocate_chr_tiles(gfx, used_obj_tiles[0x40-max_samus_tiles:])))
 
     # Samus
     used_samus_tiles = []
@@ -191,24 +211,45 @@ for max_samus_tiles in 16, 32:
         chrfile = open(f'out/samus_suitless_{group_i}_{max_samus_tiles}.chr', 'wb')
         chrfile.write(bytes(relocate_chr_tiles(suitless_gfx, used_tiles + used_obj_tiles[:0x40-max_samus_tiles])))
 
-for frame_num in samus_frames:
+    # MSB
+    for group_i, group in enumerate(samus_groups):
+        msbfile = open(f'out/samus_{group_i}_{max_samus_tiles}.msb', 'wb')
+        msbfile.write(b'\x40\x40')
+        for frame_num in group:
+            for sprite in relocated_metasprites[max_samus_tiles][frame_num][0]:
+                attrs = sprite['palette']
+                if sprite['v_flip']:
+                    attrs |= 0x80
+                if sprite['h_flip']:
+                    attrs |= 0x40
+                if sprite['bg_priority']:
+                    attrs |= 0x20
+                msbfile.write(bytes(((sprite['y']+0x40)&0xFF, sprite['tile'], attrs, (sprite['x']+0x40)&0xFF)))
+            msbfile.write(b'\xFF\xFF\xFF\xFF'*(64-len(relocated_metasprites[max_samus_tiles][frame_num][0])))
+        msbfile.write(b'\xFF'*(0x100*(0x100-len(group))))
+
+'''for frame_num in samus_frames:
     print(f'ObjFrame{frame_num:02X}:')
     print('.if CFG_NUM_SAMUS_TILES == 16')
     print_metasprite(relocated_metasprites[16][frame_num][0], relocated_metasprites[16][frame_num][1], relocated_metasprites[16][frame_num][2])
     print('.elif CFG_NUM_SAMUS_TILES == 32')
     print_metasprite(relocated_metasprites[32][frame_num][0], relocated_metasprites[32][frame_num][1], relocated_metasprites[32][frame_num][2])
+    print('.elif CFG_NUM_SAMUS_TILES == 64')
+    print_metasprite(relocated_metasprites[64][frame_num][0], relocated_metasprites[64][frame_num][1], relocated_metasprites[64][frame_num][2])
     print('.endif')
-    print()
+    print()'''
 
-for frame_num in unique_frames:
+'''for frame_num in unique_frames:
     if frame_num not in samus_frames and frame_num not in frame_ids_to_skip:
         print(f'ObjFrame{frame_num:02X}:')
         print('.if CFG_NUM_SAMUS_TILES == 16')
         print_metasprite(relocated_metasprites[16][frame_num][0], relocated_metasprites[16][frame_num][1], relocated_metasprites[16][frame_num][2])
         print('.elif CFG_NUM_SAMUS_TILES == 32')
         print_metasprite(relocated_metasprites[32][frame_num][0], relocated_metasprites[32][frame_num][1], relocated_metasprites[32][frame_num][2])
+        print('.elif CFG_NUM_SAMUS_TILES == 64')
+        print_metasprite(relocated_metasprites[64][frame_num][0], relocated_metasprites[64][frame_num][1], relocated_metasprites[64][frame_num][2])
         print('.endif')
-        print()
+        print()'''
 
 '''for frame_num in selected_en_frames:
     rom.seek(0x19DE0+frame_num*2)
